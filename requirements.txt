@@ -1,0 +1,1 @@
+# Fry Menu uses Python standard library only — no extra packages needed.
