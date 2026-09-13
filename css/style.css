@@ -1350,3 +1350,29 @@ textarea.form-control {
     border-color: var(--accent);
     color: var(--accent);
 }
+
+.timeout-screen {
+    position: fixed; inset: 0; z-index: 9500;
+    background: rgba(0,0,0,.92);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+}
+.timeout-screen.hidden { display: none !important; }
+.timeout-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 22px;
+    text-align: center;
+    max-width: 360px;
+    width: 100%;
+}
+.timeout-cd {
+    font-size: 2.4rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    margin-top: 12px;
+    letter-spacing: 0.05em;
+}
+.ford-logo img { filter: drop-shadow(0 4px 20px rgba(0,80,160,.4)); }

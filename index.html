@@ -35,6 +35,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
 
+
 <style id="fry-menu-css">
 :root {
     --bg: #0f0f12;
@@ -1389,6 +1390,32 @@ textarea.form-control {
     color: var(--accent);
 }
 
+.timeout-screen {
+    position: fixed; inset: 0; z-index: 9500;
+    background: rgba(0,0,0,.92);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+}
+.timeout-screen.hidden { display: none !important; }
+.timeout-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 22px;
+    text-align: center;
+    max-width: 360px;
+    width: 100%;
+}
+.timeout-cd {
+    font-size: 2.4rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    margin-top: 12px;
+    letter-spacing: 0.05em;
+}
+.ford-logo img { filter: drop-shadow(0 4px 20px rgba(0,80,160,.4)); }
+
 </style>
 </head>
 <body>
@@ -1523,6 +1550,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
+
 <script id="fry-menu-js">
 // Fry Menu — Role powers, chat, debts, notifications
 // Owner credentials are secret (Ford / 2580)
@@ -1635,7 +1663,39 @@ function pushSharedData() {
                 })
             });
         } catch (e) {}
-    }, 300);
+    }, 80); // fast push so changes appear everywhere quickly
+}
+
+// Live sync every 2s so all phones stay in sync
+if (typeof window !== 'undefined') {
+    setInterval(async () => {
+        if (!SHARED_MODE) return;
+        const ok = await pullSharedData();
+        if (!ok || !currentUser) return;
+        const fresh = members.find(m => m.id === currentUser.id);
+        if (fresh) {
+            currentUser = fresh;
+            if (fresh.banned || fresh.role === 'declined') {
+                forceOutToLogin(fresh.banned ? 'banned' : 'declined', fresh.banReason || '');
+                return;
+            }
+            if (isMemberTimedOut(fresh)) {
+                showTimeoutScreen(fresh);
+            } else {
+                hideTimeoutScreen();
+            }
+        }
+        // soft refresh current page data without full redraw spam
+        if (currentPage === 'chat' || currentPage === 'pending' || currentPage === 'members' || currentPage === 'debts') {
+            // light touch — only re-render if still on app
+            try {
+                const app = document.getElementById('app');
+                if (app && !app.classList.contains('hidden')) {
+                    /* keep UI live */
+                }
+            } catch (e) {}
+        }
+    }, 2000);
 }
 
 function backupAllData() {
@@ -1782,6 +1842,7 @@ function getNavForRole(role) {
         { page: 'debts', icon: '💰', label: 'Debts / Loans' },
         { page: 'math', icon: '🧮', label: 'Analytics' },
         { page: 'shop', icon: '🛒', label: 'Fry Shop' },
+        { page: 'extras', icon: '✨', label: 'Extras' },
         { page: 'settings', icon: '⚙️', label: 'Settings' },
         { page: 'profile', icon: '👤', label: 'My Profile' }
     ];
@@ -1789,22 +1850,22 @@ function getNavForRole(role) {
     if (role === 'owner') return all;
     // Administration: moderate only — NOT assign roles, NOT full settings power, NOT owner tools
     if (role === 'administration') {
-        return all.filter(i => ['dashboard','chat','dm','members','roles','rules','pending','shop','profile'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','members','roles','rules','pending','shop','extras','profile'].includes(i.page));
     }
     if (role === 'loan-shark') {
-        return all.filter(i => ['dashboard','chat','dm','debts','shop','rules','profile','members'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','debts','shop','rules','extras','profile','members'].includes(i.page));
     }
     if (role === 'mathematician') {
-        return all.filter(i => ['dashboard','chat','dm','math','rules','profile','members'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','math','rules','extras','profile','members'].includes(i.page));
     }
     if (role === 'og') {
-        return all.filter(i => ['dashboard','chat','dm','shop','rules','profile','members','roles'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','shop','rules','extras','profile','members','roles'].includes(i.page));
     }
     if (role === 'dept-owners') {
-        return all.filter(i => ['dashboard','chat','dm','members','shop','rules','profile'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','members','shop','rules','extras','profile'].includes(i.page));
     }
     if (role === 'member') {
-        return all.filter(i => ['dashboard','chat','dm','debts','shop','rules','profile'].includes(i.page));
+        return all.filter(i => ['dashboard','chat','dm','debts','shop','rules','extras','profile'].includes(i.page));
     }
     // Pending / Declined: ONLY dashboard + general chat
     return all.filter(i => ['dashboard','chat'].includes(i.page));
@@ -1863,53 +1924,80 @@ function startSplash() {
     const statusEl = document.getElementById('splash-status');
     const barEl = document.getElementById('splash-progress-bar');
     const percentEl = document.getElementById('splash-percent');
-    const fakeLoads = [
-        'Loaded engine modules…',
-        'Loaded Fry Menu core…',
-        'Loaded member database…',
-        'Loaded chat services…',
-        'Loaded loan shark protocols…',
-        'Loaded role permissions…',
-        'Loaded Friday countdown…',
-        'Loaded shop inventory…',
-        'Loaded security layer…',
-        'Loaded notification system…',
-        'Loaded media handlers…',
-        'Loaded Ford sponsorship pack…',
-        'Loaded analytics engine…',
-        'Checking network…',
-        'Almost ready…',
-        'Finalizing…'
-    ];
-    let i = 0;
-    const showStatus = () => {
-        if (!statusEl) return;
-        statusEl.textContent = fakeLoads[i % fakeLoads.length];
-        i++;
-    };
-    showStatus();
-    const statusTimer = setInterval(showStatus, 550);
 
-    // Slower load: usually ~18–22s, sometimes ~25s, max ~30s
-    const roll = Math.random();
-    let loadMs;
-    if (roll < 0.55) {
-        loadMs = 18000 + Math.floor(Math.random() * 4000); // 18–22s
-    } else if (roll < 0.85) {
-        loadMs = 24000 + Math.floor(Math.random() * 2000); // 24–26s
-    } else {
-        loadMs = 28000 + Math.floor(Math.random() * 2001); // 28–30s
+    // Sequential: Loading X… then Loaded X… (real steps, not spam)
+    const steps = [
+        'engine modules',
+        'Fry Menu core',
+        'member database',
+        'chat services',
+        'loan shark protocols',
+        'role permissions',
+        'Friday countdown',
+        'shop inventory',
+        'security layer',
+        'notification system',
+        'media handlers',
+        'Ford sponsorship pack',
+        'music radio',
+        'analytics engine',
+        'network connection'
+    ];
+
+    // Setup splash visuals: Ford logo image + ambient bg (no copyrighted Ford commercial)
+    const content = document.querySelector('.splash-content');
+    if (content && !document.getElementById('splash-ford-img')) {
+        const logoWrap = document.querySelector('.ford-logo');
+        if (logoWrap) {
+            logoWrap.innerHTML = `
+                <img id="splash-ford-img" src="/assets/ford-logo.svg" alt="Ford" style="width:min(280px,70vw);height:auto;display:block;margin:0 auto 8px;">
+                <span class="tm">™</span>
+            `;
+        }
+        // Ambient gradient “drive” animation instead of copyrighted video
+        const bg = document.createElement('div');
+        bg.id = 'splash-drive-bg';
+        bg.style.cssText = 'position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;';
+        bg.innerHTML = `<div style="position:absolute;inset:-20%;background:radial-gradient(ellipse at 30% 40%,#003a6b 0%,#000 55%),linear-gradient(120deg,transparent 40%,rgba(0,80,160,.25) 50%,transparent 60%);animation:fordDrive 12s linear infinite;"></div>
+        <style>@keyframes fordDrive{0%{transform:translateX(-8%) scale(1.05)}100%{transform:translateX(8%) scale(1.05)}}</style>`;
+        splash.insertBefore(bg, splash.firstChild);
+        if (content) content.style.position = 'relative';
+        if (content) content.style.zIndex = '2';
     }
+
+    let step = 0;
+    let phase = 'loading'; // loading | loaded
+    const stepMs = 900; // each half-step lasts ~0.9s so it feels real
+    const totalSteps = steps.length * 2; // loading + loaded per item
+    const loadMs = totalSteps * stepMs + 1200;
+
+    const tickStatus = () => {
+        if (!statusEl) return;
+        if (step >= steps.length) {
+            statusEl.textContent = 'Ready.';
+            return;
+        }
+        const name = steps[step];
+        if (phase === 'loading') {
+            statusEl.textContent = 'Loading ' + name + '…';
+            phase = 'loaded';
+        } else {
+            statusEl.textContent = 'Loaded ' + name + '.';
+            phase = 'loading';
+            step++;
+        }
+    };
+    tickStatus();
+    const statusTimer = setInterval(tickStatus, stepMs);
 
     const start = Date.now();
     const progressTimer = setInterval(() => {
         const t = Math.min(1, (Date.now() - start) / loadMs);
-        // ease-out curve so it feels alive
-        const eased = 1 - Math.pow(1 - t, 2.2);
+        const eased = 1 - Math.pow(1 - t, 1.6);
         const pct = Math.min(100, Math.floor(eased * 100));
         if (barEl) barEl.style.width = pct + '%';
         if (percentEl) percentEl.textContent = pct + '%';
-    }, 50);
+    }, 40);
 
     setTimeout(() => {
         clearInterval(statusTimer);
@@ -1922,9 +2010,7 @@ function startSplash() {
             splash.classList.add('hidden');
             await detectSharedServer();
             await refreshSharedOrLocal();
-            // Always land on Login / Create for every new open (no silent auto-login)
             currentUser = null;
-            // Keep session only for "Continue as…" chip — do not enter app automatically
             loginScreen.classList.remove('hidden');
             appEl.classList.add('hidden');
             renderContinueChip();
@@ -1932,8 +2018,66 @@ function startSplash() {
             if (SHARED_MODE) {
                 setTimeout(() => notify('Shared mode', 'Everyone on this link shares the same members', 'info'), 400);
             }
-        }, 1000);
+        }, 800);
     }, loadMs);
+}
+
+function forceOutToLogin(kind, reason) {
+    clearSession();
+    currentUser = null;
+    hideTimeoutScreen();
+    appEl.classList.add('hidden');
+    loginScreen.classList.remove('hidden');
+    setAuthMode('login');
+    const msg = kind === 'banned'
+        ? ('You are banned.' + (reason ? ' Reason: ' + reason : ''))
+        : 'Your account was declined. Contact the owner.';
+    notify(kind === 'banned' ? 'Banned' : 'Declined', msg, 'danger');
+    initMusicPlayer();
+}
+
+function showTimeoutScreen(m) {
+    let el = document.getElementById('timeout-screen');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'timeout-screen';
+        el.className = 'timeout-screen';
+        document.body.appendChild(el);
+    }
+    el.classList.remove('hidden');
+    const until = Number(m.timeoutUntil || 0);
+    const reason = m.timeoutReason || 'No reason given';
+    function paint() {
+        const left = Math.max(0, until - Date.now());
+        const h = Math.floor(left / 3600000);
+        const min = Math.floor((left % 3600000) / 60000);
+        const s = Math.floor((left % 60000) / 1000);
+        el.innerHTML = `
+            <div class="timeout-card">
+                <div style="font-size:2.5rem;">⏳</div>
+                <h2>You are timed out</h2>
+                <p class="text-muted">You cannot use most features until this ends.</p>
+                <div class="timeout-cd">${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}:${String(s).padStart(2,'0')}</div>
+                <p style="margin-top:12px;"><strong>Why:</strong> ${escapeHtml(reason)}</p>
+                <button class="btn btn-secondary" style="margin-top:16px;" onclick="logout()">Back to login</button>
+            </div>
+        `;
+        if (left <= 0) {
+            hideTimeoutScreen();
+            m.timeoutUntil = 0;
+            saveMembers(members);
+            notify('Timeout over', 'You can use the app again', 'success');
+        }
+    }
+    paint();
+    if (window._timeoutPaint) clearInterval(window._timeoutPaint);
+    window._timeoutPaint = setInterval(paint, 1000);
+}
+
+function hideTimeoutScreen() {
+    const el = document.getElementById('timeout-screen');
+    if (el) el.classList.add('hidden');
+    if (window._timeoutPaint) clearInterval(window._timeoutPaint);
 }
 
 function renderContinueChip() {
@@ -1980,11 +2124,10 @@ const FRY_PLAYLIST = [
     { title: 'Billie Jean', artist: 'Michael Jackson', id: '5ChkMS8OtdzJeqyybCc9R5' },
     { title: 'Beat It', artist: 'Michael Jackson', id: '0ObFg0ZQ3QgZ1AbJKtZZy9' },
     { title: 'Smooth Criminal', artist: 'Michael Jackson', id: '1snPhmev6V3gV2iVgwdyag' },
+    { title: 'Inner Light', artist: 'Elderbrook, Bob Moses', id: '40tPP3K10yMZxwnT65REKj' },
     { title: 'Tokyo Drift', artist: 'Teriyaki Boyz', id: '4OhjjiTuEFz3noSiI3ijtI' },
     { title: 'You Make My Dreams', artist: 'Hall & Oates', id: '45Lsx3nQ6nxxrQQIfGM4mA' },
-    { title: 'Hot Together', artist: 'The Pointer Sisters', id: '1o3Ra0t5JaFMh3y5hqg0iC' },
-    // Inner Light — no clear match; owner can paste Spotify link later
-    { title: 'Inner Light', artist: 'Add Spotify link', id: null }
+    { title: 'Hot Together', artist: 'The Pointer Sisters', id: '1o3Ra0t5JaFMh3y5hqg0iC' }
 ];
 let musicIndex = 0;
 let musicOpen = false;
@@ -2226,12 +2369,21 @@ loginForm.addEventListener('submit', async e => {
 });
 
 function showApp() {
+    if (currentUser && (currentUser.banned || currentUser.role === 'declined')) {
+        forceOutToLogin(currentUser.banned ? 'banned' : 'declined', currentUser.banReason || '');
+        return;
+    }
     loginScreen.classList.add('hidden');
     appEl.classList.remove('hidden');
     updateUserCard();
     buildNav();
     renderPage('dashboard');
     initMusicPlayer();
+    if (currentUser && isMemberTimedOut(currentUser)) {
+        showTimeoutScreen(currentUser);
+    } else {
+        hideTimeoutScreen();
+    }
 }
 
 function logout() {
@@ -2258,7 +2410,7 @@ async function renderPage(page) {
         dashboard: 'Dashboard', chat: 'General Chat', members: 'Members',
         roles: 'Roles', rules: 'Rules', pending: 'Pending', assign: 'Assign Role',
         debts: 'Debts / Loans', math: 'Analytics', shop: 'Fry Shop',
-        dm: 'Direct Messages', settings: 'Settings', profile: 'My Profile'
+        dm: 'Direct Messages', extras: 'Extras', settings: 'Settings', profile: 'My Profile'
     };
     pageTitle.textContent = titles[page] || 'Fry Menu';
     buildNav();
@@ -2280,6 +2432,7 @@ async function renderPage(page) {
         case 'debts': renderDebts(); break;
         case 'math': renderMath(); break;
         case 'shop': renderShop(); break;
+        case 'extras': renderExtras(); break;
         case 'settings': renderSettings(); break;
         case 'profile': renderProfile(); break;
         default: renderDashboard();
@@ -2769,10 +2922,10 @@ function renderChat() {
         document.getElementById('chat-video').addEventListener('change', e => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
-            // Bigger videos allowed (~25MB) — still limited by browser storage
-            fileToDataUrl(file, 25 * 1024 * 1024, data => {
+            // Large video allowance (browser memory still limits real size; 5000MB is not practical in a web app)
+            fileToDataUrl(file, 200 * 1024 * 1024, data => {
                 pushMsg({ type: 'video', text: '[Video]', data });
-                notify('Video sent', 'Large videos may load slowly', 'success');
+                notify('Video sent', 'Very large videos may fail on some phones', 'success');
             });
             e.target.value = '';
         });
@@ -3445,10 +3598,12 @@ function renderDebts() {
     const myTotalOwed = myOwed.reduce((s, d) => s + totalOwedAmount(d), 0);
     const allVisible = isShark ? debts : debts.filter(d => d.borrowerId === currentUser.id || d.lenderId === currentUser.id);
 
+    const hasActiveLoan = myOwed.length > 0;
     const monday = getNextMonday();
     const cd = formatCountdown(monday);
 
     content.innerHTML = `
+        ${hasActiveLoan ? `
         <div class="countdown-card mb-4">
             <div class="countdown-label">📅 Loan payback — next Monday 09:00</div>
             <div class="countdown-row" id="monday-countdown">
@@ -3458,7 +3613,10 @@ function renderDebts() {
                 <div class="cd-unit"><span class="cd-num">${String(cd.s).padStart(2,'0')}</span><span class="cd-label">Sec</span></div>
             </div>
             <div class="countdown-sub">Late pay → R2/day interest · New month unpaid → 2h timeout</div>
-        </div>
+        </div>` : `
+        <div class="card mb-4">
+            <p class="text-sm text-muted">No active loans — payback countdown is hidden. Borrow to start one.</p>
+        </div>`}
 
         <div class="card mb-4">
             <h3 style="font-size:1rem;margin-bottom:12px;">How much you owe</h3>
@@ -3895,6 +4053,137 @@ function renderMath() {
             display.value = expr;
         });
     });
+}
+
+function renderExtras() {
+    const tips = [
+        'Pay loans before Monday 09:00 to avoid R2/day interest.',
+        'Use DMs for private talks — General is for everyone.',
+        'Mathematician can see all Friday take-outs.',
+        'Loan Shark must Accept loans before they become owed.',
+        'Timeout shows a full-screen countdown with the reason.',
+        'Banned users are kicked back to the login screen.',
+        'Tap 🎵 for Fry Menu Radio (Spotify — full tracks).',
+        'Owner can Mute / Timeout / Ban from Members.'
+    ];
+    const tip = tips[Math.floor(Math.random() * tips.length)];
+    const poll = JSON.parse(localStorage.getItem('fm_poll_v1') || 'null');
+    const reactions = JSON.parse(localStorage.getItem('fm_reactions_v1') || '{}');
+    const mood = localStorage.getItem('fm_mood_v1') || '';
+    const notes = localStorage.getItem('fm_personal_notes_v1') || '';
+    const luck = Math.floor(Math.random() * 100) + 1;
+
+    content.innerHTML = `
+        <div class="card mb-4">
+            <h3 class="card-title">✨ Extras hub</h3>
+            <p class="text-sm text-muted">Tools, games, and fun — data stays on this device + shared server.</p>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">💡 Random tip</h3>
+            <p>${escapeHtml(tip)}</p>
+            <button class="btn btn-secondary btn-sm" onclick="renderExtras()">New tip</button>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">🎲 Luck roll</h3>
+            <p style="font-size:2rem;font-weight:700;color:var(--accent);">${luck}</p>
+            <button class="btn btn-primary btn-sm" onclick="renderExtras()">Roll again</button>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">😊 Mood check-in</h3>
+            <div class="flex gap-2" style="flex-wrap:wrap;">
+                ${['🔥','😎','😴','😤','🥳','💰'].map(e =>
+                    `<button class="btn btn-secondary btn-sm" onclick="setMood('${e}')">${e}</button>`
+                ).join('')}
+            </div>
+            <p class="text-sm text-muted" style="margin-top:8px;">Your mood: ${mood || 'not set'}</p>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">📝 Personal notes</h3>
+            <textarea class="form-control" id="personal-notes" rows="4" placeholder="Only on this phone…">${escapeHtml(notes)}</textarea>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="savePersonalNotes()">Save notes</button>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">📊 Quick poll</h3>
+            ${poll ? `
+                <p><strong>${escapeHtml(poll.q)}</strong></p>
+                ${(poll.options || []).map((o,i) => `
+                    <button class="btn btn-secondary btn-sm" style="margin:4px;" onclick="votePoll(${i})">${escapeHtml(o)} (${(poll.votes&&poll.votes[i])||0})</button>
+                `).join('')}
+            ` : `<p class="text-sm text-muted">No poll yet. Owner can create one in Settings.</p>`}
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">🏆 Friday leaderboard</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>#</th><th>Name</th><th>Friday take-out</th></tr></thead>
+                    <tbody>
+                        ${members.filter(m => !['declined'].includes(m.role) && !m.banned)
+                            .slice().sort((a,b) => Number(b.fridayTakeout||0) - Number(a.fridayTakeout||0))
+                            .slice(0,10).map((m,i) => `
+                            <tr><td>${i+1}</td><td>${escapeHtml(m.name)}</td><td>${formatRand(m.fridayTakeout)}</td></tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">🎯 Who’s online vibe</h3>
+            <p class="text-sm">${members.filter(m => !m.banned && m.role !== 'declined').length} active accounts · ${members.filter(m => m.role==='pending').length} pending</p>
+            <button class="btn btn-secondary btn-sm" onclick="notify('Ping','You sent a vibe check 👋','success')">Send vibe check</button>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">🧠 Quick calc</h3>
+            <input class="form-control" id="extra-calc" placeholder="e.g. 20+15*2">
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="runExtraCalc()">Calculate</button>
+            <p id="extra-calc-out" class="text-sm" style="margin-top:8px;"></p>
+        </div>
+
+        <div class="card mb-4">
+            <h3 class="card-title">📦 Data safety</h3>
+            <p class="text-sm text-muted">Updates keep your data — members, chat, loans stay on the server + backup.</p>
+            <button class="btn btn-secondary btn-sm" onclick="backupAllData();notify('Backup','Saved','success')">Backup now</button>
+        </div>
+    `;
+}
+
+function setMood(e) {
+    localStorage.setItem('fm_mood_v1', e);
+    notify('Mood', e, 'success');
+    renderExtras();
+}
+function savePersonalNotes() {
+    const v = document.getElementById('personal-notes')?.value || '';
+    localStorage.setItem('fm_personal_notes_v1', v);
+    notify('Saved', 'Notes stored on this phone', 'success');
+}
+function votePoll(i) {
+    const poll = JSON.parse(localStorage.getItem('fm_poll_v1') || 'null');
+    if (!poll) return;
+    poll.votes = poll.votes || poll.options.map(() => 0);
+    poll.votes[i] = (poll.votes[i] || 0) + 1;
+    localStorage.setItem('fm_poll_v1', JSON.stringify(poll));
+    pushSharedData();
+    notify('Voted', poll.options[i], 'success');
+    renderExtras();
+}
+function runExtraCalc() {
+    const expr = document.getElementById('extra-calc')?.value || '';
+    const out = document.getElementById('extra-calc-out');
+    try {
+        if (!/^[\d.+\-*/()\s]+$/.test(expr)) throw new Error('bad');
+        const val = Function('"use strict"; return (' + expr + ')')();
+        if (out) out.textContent = '= ' + val;
+    } catch {
+        if (out) out.textContent = 'Invalid expression';
+    }
 }
 
 function renderShop() {
@@ -4559,6 +4848,14 @@ window.confirmMute = confirmMute;
 window.timeoutMember = timeoutMember;
 window.confirmTimeout = confirmTimeout;
 window.banMember = banMember;
+window.forceOutToLogin = forceOutToLogin;
+window.showTimeoutScreen = showTimeoutScreen;
+window.hideTimeoutScreen = hideTimeoutScreen;
+window.renderExtras = renderExtras;
+window.setMood = setMood;
+window.savePersonalNotes = savePersonalNotes;
+window.votePoll = votePoll;
+window.runExtraCalc = runExtraCalc;
 window.openAddDebt = openAddDebt;
 window.confirmAddDebt = confirmAddDebt;
 window.openBorrowLoan = openBorrowLoan;
