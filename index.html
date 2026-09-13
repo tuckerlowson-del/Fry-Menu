@@ -33,6 +33,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
 <style id="fry-menu-css">
 :root {
     --bg: #0f0f12;
@@ -1303,6 +1304,9 @@ textarea.form-control {
 .calc-key { min-height: 42px; font-weight: 700; }
 .agree-row { font-size: 0.9rem; line-height: 1.4; }
 
+.chat-media { max-width: 100%; max-height: 70vh; width: auto; border-radius: 12px; }
+.chat-msg video.chat-media { width: 100%; max-height: 75vh; background: #000; }
+
 </style>
 </head>
 <body>
@@ -1428,7 +1432,15 @@ textarea.form-control {
         </div>
     </div>
 
-    <script id="fry-menu-js">
+    
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  });
+}
+</script>
+<script id="fry-menu-js">
 // Fry Menu — Role powers, chat, debts, notifications
 // Owner credentials are secret (Ford / 2580)
 
@@ -1993,6 +2005,10 @@ loginForm.addEventListener('submit', async e => {
         notify('Wrong password', 'Try again', 'danger');
         return;
     }
+    if (user.banned) {
+        notify('Banned', user.banReason ? 'Reason: ' + user.banReason : 'You are banned from Fry Menu', 'danger');
+        return;
+    }
     currentUser = user;
     saveSession(currentUser);
     showApp();
@@ -2495,6 +2511,14 @@ function renderChat() {
     }
 
     function send() {
+        if (isMemberMuted(currentUser) || isMemberBanned(currentUser)) {
+            notify('Muted / banned', 'You cannot send messages', 'danger');
+            return;
+        }
+        if (isMemberTimedOut(currentUser)) {
+            notify('Timeout', 'You are timed out', 'danger');
+            return;
+        }
         const input = document.getElementById('chat-input');
         const text = input.value.trim();
         if (!text) return;
@@ -2522,7 +2546,7 @@ function renderChat() {
         document.getElementById('chat-image').addEventListener('change', e => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
-            fileToDataUrl(file, 1.5 * 1024 * 1024, data => {
+            fileToDataUrl(file, 8 * 1024 * 1024, data => {
                 pushMsg({ type: 'image', text: '[Photo]', data });
                 notify('Photo sent', '', 'success');
             });
@@ -2532,9 +2556,10 @@ function renderChat() {
         document.getElementById('chat-video').addEventListener('change', e => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
-            fileToDataUrl(file, 4 * 1024 * 1024, data => {
+            // Bigger videos allowed (~25MB) — still limited by browser storage
+            fileToDataUrl(file, 25 * 1024 * 1024, data => {
                 pushMsg({ type: 'video', text: '[Video]', data });
-                notify('Video sent', '', 'success');
+                notify('Video sent', 'Large videos may load slowly', 'success');
             });
             e.target.value = '';
         });
@@ -2831,12 +2856,42 @@ function issueWarning() {
     renderPage('rules');
 }
 
+function canModerate() {
+    return currentUser && (currentUser.role === 'owner' || currentUser.role === 'administration');
+}
+function isMemberBanned(m) { return !!(m && m.banned); }
+function isMemberMuted(m) {
+    if (!m) return false;
+    if (m.mutedForever) return true;
+    const until = Number(m.mutedUntil || 0);
+    return until > Date.now();
+}
+function isMemberTimedOut(m) {
+    if (!m) return false;
+    const until = Number(m.timeoutUntil || 0);
+    return until > Date.now();
+}
+function modStatusLabel(m) {
+    const bits = [];
+    if (isMemberBanned(m)) bits.push('BANNED');
+    if (isMemberMuted(m)) bits.push('MUTED');
+    if (isMemberTimedOut(m)) bits.push('TIMEOUT');
+    return bits.length ? bits.join(' · ') : '';
+}
+
 function renderMembers() {
+    const mod = canModerate();
     const isOwner = currentUser.role === 'owner';
     content.innerHTML = `
         <div class="flex items-center justify-between mb-4" style="flex-wrap:wrap;gap:10px;">
-            <p class="text-muted text-sm">All members</p>
-            ${isOwner ? `<button class="btn btn-primary btn-sm" onclick="openAddMember()">+ Add</button>` : ''}
+            <p class="text-muted text-sm">All members (${members.length})</p>
+            <div class="flex gap-2" style="flex-wrap:wrap;">
+                ${mod ? `<button class="btn btn-primary btn-sm" onclick="openAddMember()">+ Add</button>` : ''}
+                <button class="btn btn-secondary btn-sm" onclick="renderPage('members')">🔄 Refresh</button>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <p class="text-sm text-muted">Owner / Admin can <strong>Mute</strong>, <strong>Timeout</strong>, <strong>Ban</strong>, change roles, or remove people.</p>
         </div>
         <div class="table-wrap">
             <table>
@@ -2845,36 +2900,157 @@ function renderMembers() {
                         <th>Name</th>
                         <th>Role</th>
                         <th>Friday</th>
-                        <th>Budget</th>
-                        ${isOwner ? '<th>Actions</th>' : ''}
+                        <th>Status</th>
+                        ${mod ? '<th>Actions</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
-                    ${members.map(m => `
+                    ${members.map(m => {
+                        const st = modStatusLabel(m);
+                        return `
                         <tr>
                             <td>
-                                <div style="font-weight:500;">${m.name}</div>
-                                <div class="text-sm text-muted">${formatDate(m.joined)}</div>
+                                <div style="font-weight:500;">${escapeHtml(m.name)}</div>
+                                <div class="text-sm text-muted">${formatDate(m.joined)} · ${formatRand(m.budget)}</div>
                             </td>
                             <td>${roleBadge(m.role)}</td>
                             <td>${formatRand(m.fridayTakeout)}</td>
-                            <td>${formatRand(m.budget)}</td>
-                            ${isOwner ? `
+                            <td class="text-sm">${st ? `<span style="color:var(--danger);font-weight:600;">${st}</span>` : '<span class="text-muted">OK</span>'}</td>
+                            ${mod ? `
                                 <td>
                                     ${m.role !== 'owner' ? `
-                                        <div class="flex gap-2">
-                                            <button class="btn btn-secondary btn-sm" onclick="openAssignRole(${m.id})">Role</button>
-                                            <button class="btn btn-danger btn-sm" onclick="removeMember(${m.id})">×</button>
+                                        <div class="flex gap-2" style="flex-wrap:wrap;">
+                                            ${isOwner ? `<button class="btn btn-secondary btn-sm" onclick="openAssignRole(${m.id})">Role</button>` : ''}
+                                            <button class="btn btn-secondary btn-sm" onclick="muteMember(${m.id})">${isMemberMuted(m) ? 'Unmute' : 'Mute'}</button>
+                                            <button class="btn btn-secondary btn-sm" onclick="timeoutMember(${m.id})">Timeout</button>
+                                            <button class="btn btn-danger btn-sm" onclick="banMember(${m.id})">${isMemberBanned(m) ? 'Unban' : 'Ban'}</button>
+                                            ${isOwner ? `<button class="btn btn-danger btn-sm" onclick="removeMember(${m.id})">×</button>` : ''}
                                         </div>
-                                    ` : '<span class="text-sm text-muted">You</span>'}
+                                    ` : '<span class="text-sm text-muted">Owner</span>'}
                                 </td>
                             ` : ''}
-                        </tr>
-                    `).join('')}
+                        </tr>`;
+                    }).join('')}
                 </tbody>
             </table>
         </div>
     `;
+}
+
+function muteMember(id) {
+    if (!canModerate()) return;
+    const m = members.find(x => x.id === id);
+    if (!m || m.role === 'owner') return;
+    if (isMemberMuted(m)) {
+        m.mutedUntil = 0;
+        m.mutedForever = false;
+        saveMembers(members);
+        notify('Unmuted', m.name, 'success');
+        postAnnouncement(`${m.name} was unmuted`);
+        renderPage('members');
+        return;
+    }
+    modalTitle.textContent = 'Mute ' + m.name;
+    modalBody.innerHTML = `
+        <p class="text-sm text-muted mb-4">Muted users cannot send chat or DMs.</p>
+        <div class="form-group">
+            <label>Duration</label>
+            <select class="form-control" id="mute-dur">
+                <option value="15">15 minutes</option>
+                <option value="60" selected>1 hour</option>
+                <option value="360">6 hours</option>
+                <option value="1440">24 hours</option>
+                <option value="forever">Forever</option>
+            </select>
+        </div>
+        <div class="form-group"><label>Reason</label><input class="form-control" id="mute-reason" placeholder="Optional"></div>
+    `;
+    modalFooter.innerHTML = `
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmMute(${id})">Mute</button>
+    `;
+    openModal();
+}
+function confirmMute(id) {
+    const m = members.find(x => x.id === id);
+    if (!m) return;
+    const dur = document.getElementById('mute-dur').value;
+    const reason = document.getElementById('mute-reason')?.value.trim() || '';
+    if (dur === 'forever') {
+        m.mutedForever = true;
+        m.mutedUntil = 0;
+    } else {
+        m.mutedForever = false;
+        m.mutedUntil = Date.now() + Number(dur) * 60 * 1000;
+    }
+    m.muteReason = reason;
+    saveMembers(members);
+    closeModal();
+    postAnnouncement(`${m.name} was muted${reason ? ': ' + reason : ''}`);
+    notify('Muted', m.name, 'success');
+    renderPage('members');
+}
+
+function timeoutMember(id) {
+    if (!canModerate()) return;
+    const m = members.find(x => x.id === id);
+    if (!m || m.role === 'owner') return;
+    modalTitle.textContent = 'Timeout ' + m.name;
+    modalBody.innerHTML = `
+        <p class="text-sm text-muted mb-4">Timeout blocks borrowing and most actions.</p>
+        <div class="form-group">
+            <label>Duration</label>
+            <select class="form-control" id="to-dur">
+                <option value="30">30 minutes</option>
+                <option value="120" selected>2 hours</option>
+                <option value="720">12 hours</option>
+                <option value="1440">24 hours</option>
+            </select>
+        </div>
+        <div class="form-group"><label>Reason</label><input class="form-control" id="to-reason" placeholder="Optional"></div>
+    `;
+    modalFooter.innerHTML = `
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmTimeout(${id})">Timeout</button>
+    `;
+    openModal();
+}
+function confirmTimeout(id) {
+    const m = members.find(x => x.id === id);
+    if (!m) return;
+    const mins = Number(document.getElementById('to-dur').value) || 120;
+    const reason = document.getElementById('to-reason')?.value.trim() || '';
+    m.timeoutUntil = Date.now() + mins * 60 * 1000;
+    m.timeoutReason = reason;
+    saveMembers(members);
+    closeModal();
+    postAnnouncement(`${m.name} timed out for ${mins} min${reason ? ': ' + reason : ''}`);
+    notify('Timeout set', m.name, 'success');
+    renderPage('members');
+}
+
+function banMember(id) {
+    if (!canModerate()) return;
+    const m = members.find(x => x.id === id);
+    if (!m || m.role === 'owner') return;
+    if (isMemberBanned(m)) {
+        m.banned = false;
+        m.banReason = '';
+        saveMembers(members);
+        postAnnouncement(`${m.name} was unbanned`);
+        notify('Unbanned', m.name, 'success');
+        renderPage('members');
+        return;
+    }
+    const reason = prompt('Ban reason (optional):') || '';
+    if (!confirm(`Ban ${m.name}? They cannot log in.`)) return;
+    m.banned = true;
+    m.banReason = reason;
+    m.role = 'declined';
+    saveMembers(members);
+    postAnnouncement(`${m.name} was banned${reason ? ': ' + reason : ''}`);
+    notify('Banned', m.name, 'danger');
+    renderPage('members');
 }
 
 function renderRoles() {
@@ -3192,8 +3368,8 @@ function postAnnouncement(text) {
 
 // Anyone approved can borrow — must answer why
 function openBorrowLoan() {
-    if (isOnCooldown()) {
-        notify('Timeout', 'You are on cooldown and cannot borrow right now', 'danger');
+    if (isOnCooldown() || isMemberTimedOut(currentUser) || isMemberBanned(currentUser)) {
+        notify('Blocked', 'You cannot borrow right now (timeout / ban / cooldown)', 'danger');
         return;
     }
     const settings = loadAppSettings();
@@ -4165,6 +4341,11 @@ window.declineMember = declineMember;
 window.removeMember = removeMember;
 window.openAddMember = openAddMember;
 window.confirmAddMember = confirmAddMember;
+window.muteMember = muteMember;
+window.confirmMute = confirmMute;
+window.timeoutMember = timeoutMember;
+window.confirmTimeout = confirmTimeout;
+window.banMember = banMember;
 window.openAddDebt = openAddDebt;
 window.confirmAddDebt = confirmAddDebt;
 window.openBorrowLoan = openBorrowLoan;
@@ -4205,13 +4386,6 @@ window.logout = logout;
 setAuthMode('create');
 startSplash();
 
-</script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function () {});
-  });
-}
 </script>
 </body>
 </html>

@@ -120,10 +120,23 @@ class Handler(SimpleHTTPRequestHandler):
                 for fn in filenames:
                     full = os.path.join(dirpath, fn)
                     rel = os.path.relpath(full, ROOT).replace("\\", "/")
-                    if not rel.startswith(".") and "shared_data" not in rel:
+                    if "shared_data" not in rel:
                         files.append(rel)
             self._json(200, {"root": ROOT, "files": sorted(files)})
             return
+        # Digital Asset Links — required for PWABuilder APK to hide URL bar
+        if path in ("/.well-known/assetlinks.json", "/assetlinks.json"):
+            asset_path = os.path.join(ROOT, ".well-known", "assetlinks.json")
+            if os.path.isfile(asset_path):
+                with open(asset_path, "rb") as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._cors()
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         return super().do_GET()
 
     def end_headers(self):
