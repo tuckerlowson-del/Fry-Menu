@@ -37,6 +37,8 @@
 
 
 
+
+
 <style id="fry-menu-css">
 :root {
     --bg: #0f0f12;
@@ -1631,6 +1633,8 @@ if ('serviceWorker' in navigator) {
 
 
 
+
+
 <script id="fry-menu-js">
 // Fry Menu — Role powers, chat, debts, notifications
 // Owner credentials are secret (Ford / 2580)
@@ -2062,18 +2066,25 @@ function startSplash() {
         const bg = document.createElement('div');
         bg.id = 'splash-drive-bg';
         bg.style.cssText = 'position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#000;';
+        // Real Ford car footage — public domain CC0 (U.S. National Archives, 1932 "Source of the Ford Car")
         bg.innerHTML = `
-            <video id="splash-video" autoplay muted loop playsinline
-              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.35;">
-              <source src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" type="video/mp4">
-              <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+            <video id="splash-video" autoplay muted loop playsinline preload="auto"
+              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.5;">
+              <source src="/assets/ford-splash.mp4" type="video/mp4">
+              <source src="https://archive.org/download/gov.archives.arc.91645/gov.archives.arc.91645_512kb.mp4" type="video/mp4">
             </video>
-            <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 20%,#000 75%);"></div>
+            <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 15%,rgba(0,0,0,.5) 55%,#000 90%);"></div>
         `;
         splash.insertBefore(bg, splash.firstChild);
         if (content) { content.style.position = 'relative'; content.style.zIndex = '2'; }
         const vid = document.getElementById('splash-video');
-        if (vid) { vid.play().catch(() => {}); }
+        if (vid) {
+            vid.muted = true;
+            vid.playsInline = true;
+            const tryPlay = () => vid.play().catch(() => {});
+            vid.addEventListener('loadeddata', tryPlay);
+            tryPlay();
+        }
     }
 
     let step = 0;
