@@ -1,29 +1,20 @@
 # Fry Menu
 
-## Owner login
-- Name: **Ford**
-- Password: *(your secret)*
+Role-based counter UI + Ford Ranger Wildtrak gallery slideshow.
 
-## Upload to GitHub (easy — few files)
+## Termux
 
-All CSS + JS are **inside `index.html`** now. You only need:
-
-1. `index.html`  (the whole app)
-2. `server.py`   (shared accounts on Railway)
-3. `Procfile`
-4. `railway.json`
-5. `requirements.txt`
-
-Optional: `css/` and `js/` folders (not required if using bundled index.html).
-
-### PC upload
-Drag those files into GitHub → Commit → Railway redeploys.
-
-## Railway
-Start command: `python server.py`  
-Then: Settings → Networking → Generate Domain
-
-## Local
 ```bash
-python server.py
+unzip fry-menu.zip -d ~/fry-menu
+cd ~/fry-menu
+python -m http.server 8080
 ```
+
+Open:
+- http://127.0.0.1:8080 — main app (Ford tab = in-app slideshow)
+- http://127.0.0.1:8080/ford.html — fullscreen gallery “video-style” slideshow
+
+## Note on “video”
+
+Real video with engine noise and the Ford startup chime cannot be generated.
+The Ford section is an auto-playing still slideshow of the black Wildtrak angles.

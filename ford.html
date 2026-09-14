@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ford Ranger Wildtrak — Gallery</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #0A0D11;
+      color: #fff;
+      font-family: Inter, system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .fm { font-family: Fraunces, Georgia, serif; font-weight: 650; }
+    .stage {
+      width: min(960px, 100vw);
+      aspect-ratio: 16/9;
+      max-height: 70vh;
+      background: linear-gradient(160deg, #1B3A54 0%, #0E1D29 50%, #0A0D11 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.45);
+    }
+    .slide {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.8s ease;
+      padding: 2rem; text-align: center;
+    }
+    .slide.active { opacity: 1; }
+    .slide h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin-bottom: 0.5rem; }
+    .slide p { color: rgba(255,255,255,0.55); max-width: 28rem; font-size: 0.95rem; }
+    .bar {
+      position: absolute; bottom: 0; left: 0; height: 3px;
+      background: #3E8EDE; width: 0%;
+      animation: none;
+    }
+    .bar.run { animation: fill 3.5s linear forwards; }
+    @keyframes fill { from { width: 0%; } to { width: 100%; } }
+    .dots { display: flex; gap: 8px; margin-top: 1.25rem; }
+    .dots button {
+      width: 8px; height: 8px; border-radius: 99px; border: none;
+      background: rgba(255,255,255,0.25); cursor: pointer; padding: 0;
+    }
+    .dots button.on { width: 28px; background: #3E8EDE; }
+    .top {
+      position: absolute; top: 1rem; left: 1.25rem; right: 1.25rem;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 11px; color: rgba(255,255,255,0.35); letter-spacing: 0.04em;
+    }
+    a.back {
+      margin-top: 1.5rem; color: #3E8EDE; text-decoration: none; font-size: 0.875rem; font-weight: 600;
+    }
+    .note { margin-top: 0.75rem; font-size: 12px; color: rgba(255,255,255,0.3); max-width: 28rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="top">
+      <span>FORD™ · RANGER WILDTRAK</span>
+      <span id="counter">1 / 6</span>
+    </div>
+    <div class="slide active" data-i="0">
+      <h1 class="fm">Front</h1>
+      <p>Black Ford Ranger Wildtrak — daytime front three-quarter</p>
+    </div>
+    <div class="slide" data-i="1">
+      <h1 class="fm">Rear</h1>
+      <p>Tailgate · dual exhaust · Wildtrak badge</p>
+    </div>
+    <div class="slide" data-i="2">
+      <h1 class="fm">Side</h1>
+      <p>Full side profile on the open road</p>
+    </div>
+    <div class="slide" data-i="3">
+      <h1 class="fm">Door open</h1>
+      <p>Driver door open — cabin ready</p>
+    </div>
+    <div class="slide" data-i="4">
+      <h1 class="fm">Interior</h1>
+      <p>Wildtrak cabin · orange stitch · SYNC screen</p>
+    </div>
+    <div class="slide" data-i="5">
+      <h1 class="fm">Rear · door open</h1>
+      <p>Rear view with passenger door open</p>
+    </div>
+    <div class="bar run" id="bar"></div>
+  </div>
+  <div class="dots" id="dots"></div>
+  <a class="back" href="./index.html">← Back to Fry Menu</a>
+  <p class="note">Auto-playing slideshow (not a real video). Engine noise and Ford chime can’t be added here. Save the chat photos as images/ranger-1.jpg … ranger-6.jpg to use real stills later.</p>
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    const bar = document.getElementById('bar');
+    const counter = document.getElementById('counter');
+    const dots = document.getElementById('dots');
+    let i = 0;
+    slides.forEach((_, idx) => {
+      const b = document.createElement('button');
+      b.className = idx === 0 ? 'on' : '';
+      b.onclick = () => go(idx);
+      dots.appendChild(b);
+    });
+    function go(n) {
+      slides[i].classList.remove('active');
+      dots.children[i].classList.remove('on');
+      i = n;
+      slides[i].classList.add('active');
+      dots.children[i].classList.add('on');
+      counter.textContent = (i + 1) + ' / ' + slides.length;
+      bar.classList.remove('run');
+      void bar.offsetWidth;
+      bar.classList.add('run');
+    }
+    setInterval(() => go((i + 1) % slides.length), 3500);
+  </script>
+</body>
+</html>
