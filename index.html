@@ -40,6 +40,8 @@
 
 
 
+
+
 <style id="fry-menu-css">
 :root {
     --bg: #0f0f12;
@@ -1503,10 +1505,21 @@ textarea.form-control {
 <body>
     <!-- SPLASH -->
     <div id="splash" class="splash">
-        <div class="splash-content">
+        <!-- Video starts loading/playing the instant HTML is parsed -->
+        <div id="splash-drive-bg" style="position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#000;">
+            <video id="splash-video" autoplay muted loop playsinline preload="auto"
+              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.55;">
+              <source src="/assets/ford-splash.mp4" type="video/mp4">
+              <source src="/assets/ford-drive-modern.mp4" type="video/mp4">
+              <source src="https://videos.pexels.com/video-files/31238582/13341858_1920_1080_60fps.mp4" type="video/mp4">
+            </video>
+            <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 12%,rgba(0,0,0,.45) 50%,#000 88%);"></div>
+        </div>
+        <div class="splash-content" style="position:relative;z-index:2;">
             <p class="sponsored-text">Proudly Sponsored By</p>
             <div class="ford-logo">
-                <div class="ford-oval">
+                <img id="splash-ford-img" src="/assets/ford-logo.svg" alt="Ford" style="width:min(280px,70vw);height:auto;display:block;margin:0 auto 8px;" onerror="this.style.display='none'">
+                <div class="ford-oval" id="splash-ford-fallback">
                     <span class="ford-text">Ford</span>
                 </div>
                 <span class="tm">™</span>
@@ -1522,6 +1535,19 @@ textarea.form-control {
             <p class="splash-status" id="splash-status">Starting up…</p>
         </div>
     </div>
+
+<script>
+(function(){
+  var v=document.getElementById('splash-video');
+  if(!v)return;
+  v.muted=true;v.defaultMuted=true;
+  function p(){try{var x=v.play();if(x&&x.catch)x.catch(function(){})}catch(e){}}
+  p();
+  v.addEventListener('loadeddata',p);
+  v.addEventListener('canplay',p);
+  setInterval(p,200);
+})();
+</script>
 
     <!-- AUTH SCREEN -->
     <div id="login-screen" class="login-screen hidden">
@@ -1631,6 +1657,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+
 
 
 
@@ -2055,50 +2083,41 @@ function startSplash() {
         'network connection'
     ];
 
-    // Ford logo + free CC video (Big Buck Bunny — open movie, not a Ford ad)
+    // Video is in HTML so it starts the moment the site opens — force play here too
     const content = document.querySelector('.splash-content');
-    if (content && !document.getElementById('splash-ford-img')) {
-        const logoWrap = document.querySelector('.ford-logo');
-        if (logoWrap) {
-            logoWrap.innerHTML = `
-                <img id="splash-ford-img" src="/assets/ford-logo.svg" alt="Ford" style="width:min(280px,70vw);height:auto;display:block;margin:0 auto 8px;">
-                <span class="tm">™</span>
-            `;
-        }
+    if (content) {
+        content.style.position = 'relative';
+        content.style.zIndex = '2';
+    }
+    let vid = document.getElementById('splash-video');
+    if (!vid && splash) {
         const bg = document.createElement('div');
         bg.id = 'splash-drive-bg';
         bg.style.cssText = 'position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#000;';
-        // Real Ford driving: Model T on the road (public domain) + modern free stock driving clip
         bg.innerHTML = `
             <video id="splash-video" autoplay muted loop playsinline preload="auto"
               style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.55;">
               <source src="/assets/ford-splash.mp4" type="video/mp4">
               <source src="/assets/ford-drive-modern.mp4" type="video/mp4">
-              <source src="https://archive.org/download/Model_T/ModelT_512kb.mp4" type="video/mp4">
-              <source src="https://assets.mixkit.co/videos/52427/52427-720.mp4" type="video/mp4">
+              <source src="https://videos.pexels.com/video-files/31238582/13341858_1920_1080_60fps.mp4" type="video/mp4">
             </video>
             <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 12%,rgba(0,0,0,.45) 50%,#000 88%);"></div>
         `;
         splash.insertBefore(bg, splash.firstChild);
-        if (content) { content.style.position = 'relative'; content.style.zIndex = '2'; }
-        const vid = document.getElementById('splash-video');
-        if (vid) {
-            vid.muted = true;
-            vid.playsInline = true;
-            const tryPlay = () => vid.play().catch(() => {});
-            vid.addEventListener('loadeddata', tryPlay);
-            vid.addEventListener('canplay', tryPlay);
-            tryPlay();
-            // If first source fails, advance to next
-            vid.addEventListener('error', () => {
-                const sources = vid.querySelectorAll('source');
-                let next = false;
-                sources.forEach(s => {
-                    if (next) { vid.src = s.src; next = false; tryPlay(); }
-                    if (s.src === vid.currentSrc || (!vid.currentSrc && s === sources[0])) next = true;
-                });
-            });
-        }
+        vid = document.getElementById('splash-video');
+    }
+    if (vid) {
+        vid.muted = true;
+        vid.defaultMuted = true;
+        vid.playsInline = true;
+        vid.setAttribute('playsinline', '');
+        vid.setAttribute('webkit-playsinline', '');
+        const tryPlay = () => { try { const p = vid.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {} };
+        ['loadeddata', 'canplay', 'loadedmetadata', 'playing'].forEach(ev => vid.addEventListener(ev, tryPlay));
+        tryPlay();
+        // Keep trying for a few seconds so it starts ASAP even on slow phones
+        let kicks = 0;
+        const kick = setInterval(() => { tryPlay(); if (++kicks > 20) clearInterval(kick); }, 150);
     }
 
     let step = 0;
