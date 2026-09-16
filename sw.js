@@ -1,5 +1,5 @@
-/* Fry Menu service worker — basic offline shell */
-const CACHE = 'fry-menu-v1';
+/* Fry Menu service worker */
+const CACHE = 'fry-menu-v3';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -18,18 +18,18 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Always network for API (shared live data)
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request).catch(() => new Response(JSON.stringify({ ok: false, offline: true }), {
-      headers: { 'Content-Type': 'application/json' }
-    })));
+  // Never cache API or video — always live network
+  if (url.pathname.startsWith('/api/') || url.pathname.endsWith('.mp4') || url.hostname.includes('pexels') || url.hostname.includes('mixkit')) {
+    event.respondWith(fetch(event.request).catch(() => new Response('', { status: 503 })));
     return;
   }
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        if (event.request.method === 'GET' && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(event.request).then((r) => r || caches.match('/')))
