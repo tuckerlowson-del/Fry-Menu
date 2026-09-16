@@ -71,6 +71,23 @@ def save_data(data):
 
 
 class Handler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        **getattr(SimpleHTTPRequestHandler, "extensions_map", {}),
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".svg": "image/svg+xml",
+        ".json": "application/json",
+        ".js": "application/javascript",
+        ".css": "text/css",
+        ".html": "text/html",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".woff2": "font/woff2",
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=ROOT, **kwargs)
 
